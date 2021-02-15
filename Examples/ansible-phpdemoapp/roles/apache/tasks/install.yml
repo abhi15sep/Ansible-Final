@@ -1,0 +1,4 @@
+---
+- name: Install Apache...
+  package: name={{ apache['package']['name']}} state=latest
+  

@@ -1,0 +1,7 @@
+---
+apache:
+  package:
+    name: httpd
+  service:
+    name: httpd
+    status: started

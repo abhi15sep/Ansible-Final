@@ -1,0 +1,9 @@
+---
+  fav:
+    color: yellow
+    fruit: guava
+  systems:
+    packages:
+      - ntp
+      - tree
+      - vim

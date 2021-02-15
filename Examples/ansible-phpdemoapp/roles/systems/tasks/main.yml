@@ -1,0 +1,16 @@
+---
+  - name: install common systems packages
+    package:  
+      name:  "{{ item }}"
+      state: present
+    with_items:
+      - "{{ systems.packages }}"
+
+  - name: create systems users
+    user:
+      name: "{{ item.key }}"
+      uid:  "{{ item.value.uid | default(omit) }}"
+      shell: "{{ item.value.shell | default('omit') }}"
+      home: "{{ item.value.home  | default('omit')  }}"
+      state: "{{ item.value.state  | default('present') }}"
+    with_dict: "{{ users }}"

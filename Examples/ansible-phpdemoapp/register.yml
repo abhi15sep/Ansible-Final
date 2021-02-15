@@ -1,0 +1,15 @@
+---
+  - name: register variable example
+    hosts: local
+    tasks:
+      - name: install net tools to make ifconfig command available
+        package:
+          name: net-tools
+          state: present
+
+      - name: run a shell command and register result
+        shell: "/sbin/ifconfig eth0"
+        register: result
+
+      - name: print registered variable
+        debug: var=result

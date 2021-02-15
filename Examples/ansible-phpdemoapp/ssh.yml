@@ -1,0 +1,6 @@
+--- 
+  - name: configure sshd 
+    hosts: awx 
+    roles: 
+      - ssh 
+
