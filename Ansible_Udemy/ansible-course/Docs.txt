@@ -311,3 +311,138 @@ ansible-galaxy init my_role
 
 4. help
 ansible-galaxy --help
+
+=================================================================================================
+Ansibe Collection:
+
+1. Install a new collection:
+ansible-galaxy collection install <namespace>.<name of collection>
+
+2. Install a new collection from requirements file:
+ansible-galaxy install -r ./requirements.yaml
+
+3. Create a new collection with skelton directory:
+ansible-galaxy collection init my_namespace.my_collection
+
+4. help
+ansible-galaxy collection --help
+
+=====================================================================================================
+Multi-file inventory:
+> ansible-inventory -i multi-files-inventory --graph
+
+Inventory with group of groups:
+> ansible-inventory -i inventory-demo-group-of-groups graph
+
+Running dynamic inventory:
+> ansible-inventory -i inventory-demo-dynamic --host web1
+> ansible-inventory -i inventory-demo-dynamic --list
+
+EC2 dynamic inventory:
+> chmod +x inventory-demo-dynamic-aws/ec2.js
+> node inventory-demo-dynamic-aws/ec2.js --host aap1
+> ansible-inventory -i inventory-demo-dynamic-aws/ec2.js --host app1
+> ansible-inventory -i inventory-demo-dynamic-aws/ec2.js --graph
+
+
+============================================================================================================
+Playbook - Try Catch Block for Tasks
+
+
+In a regular programming language (i.e: Javascript), you may need try.. catch block in order to :
+
+- Handle Errors
+
+- Increase the fir
+
+
+    try {
+       doSomething("...")
+    } catch(error) {
+       doTheOtherThing("....")
+    }
+
+
+Ansible has something similar which is block... rescue
+
+
+This is an example : 
+
+     - name: Handle the error
+       block:
+         - debug:
+             msg: 'I execute normally'
+         - name: i force a failure
+           command: /bin/false
+         - debug:
+             msg: 'I never execute, due to the above task failing, :-('
+       rescue:
+         - debug:
+             msg: 'I caught an error, can do stuff here to fix it, :-)'
+
+
+Where : 
+
+- block is an array of tasks
+
+- rescue is an array of tasks as well
+
+- block & rescue are attributes under the big task  "Handle the error"
+
+======================================================================================================
+Playbook - Tagging Plays
+Why ? 
+
+Tagging plays is useful to run a specific play(s) and skip others when these plays are inside the same file (same playbook)
+
+
+
+What ?
+
+Tags are an attribute of play like other attributes (hosts,  tasks, gather_facts, become, ...).
+
+Tags can be a simple string or list of string. Each string is a tag.
+
+
+How ? 
+
+This is an example of a playbook with two tagged plays :
+
+
+    # first play
+    - name: play one
+      hosts: localhost
+      gather_facts: no
+      tags:
+      - play-one
+      tasks:
+      - name: task from first play
+        debug:
+          msg: "I am task from first play"
+     
+    # second play
+    - name: play two
+      hosts: localhost
+      gather_facts: no
+      tags:
+      - play-two
+      tasks:
+      - name: task from second play
+        debug:
+          msg: "I am task from second play"
+     
+
+
+- To Run only first play, you need to run the command as following: 
+
+ansible-playbook  file.yaml --tags play-one
+
+- To Run only second play, you need to run the command as following: 
+
+ansible-playbook  file.yaml --tags play-two
+
+- To run both, omit tags as ansible-playbook runs all plays in no tags is specified.
+
+Or, run this command : ansible-playbook  file.yaml --tags play-one,play-two
+
+Where you put comma (,) as separator among tags. 
