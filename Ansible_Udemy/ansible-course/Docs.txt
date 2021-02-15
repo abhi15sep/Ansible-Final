@@ -1,0 +1,313 @@
+Install Ansible
+
+Installing Ansible means installing Ansible CLI (Command line interface).
+
+We have covered this topic in the previous lecture ( Lecture 6), and specially starting from the minute 8:39, we explained there how to install Ansible CLI.
+
+However, in order to make it easy for you, i will summarize here all what's required in order to install Ansible for any OS : 
+1. MacOS :
+
+    # python3 & pip are installed
+    brew install python3
+    curl -O https://bootstrap.pypa.io/get-pip.py
+    sudo python3 get-pip.py
+     
+    # install ansible
+    sudo pip3 install ansible --upgrade
+    # or try:  pip3 install ansible --upgrade --user
+
+
+2. Ubuntu (18.04 or later)
+
+    # python3 & pip are installed
+    sudo apt update -y
+    sudo apt install python3-pip
+     
+    # install ansible
+    sudo pip3 install ansible --upgrade
+    # or try:  pip3 install ansible --upgrade --user
+
+
+3. Windows
+
+( Ansible as CLI is installed on the control machine, and the control machine must be a Linux Machine. The workaround with Windows is to install WSL before (WSL stands for Windows Subsystem Linux)
+
+a. Install WSL 2 ( Follow the Official Documentation here )
+
+b. If you choose to install Ubuntu as distribution for WSL, commands above about Ubuntu (2) are still valid.
+
+
+4. CentOS
+
+    # option 1: to install pip3
+    sudo yum install --assumeyes python3-pip
+    # option 2: to install pip3
+    # if above command does not work, try the following:
+    sudo yum install python36
+    sudo yum update python-devel
+    sudo yum install python36-devel
+    sudo easy_install-3.6 pip
+     
+    # install ansible
+    sudo pip3 install ansible --upgrade
+    # or try:  pip3 install ansible --upgrade --user
+
+
+5. Enterprise Linux (RHEL 7)
+
+
+    subscription-manager repos --enable rhel-7-server-ansible-2-rpms
+    sudo yum install -y ansible
+
+Note, that Red Hat (as Company) can deprecate its repository(ies) any time.
+
+Accordingly, if you purchase a subscription from Red Hat, I assume that you know the process.
+
+
+6. Run it with Docker
+
+
+If you have already docker installed, you can run ansible without installing anything, but just selecting the right container image.
+
+In the following commands, we are using the container image abdennour/ansible.
+
+
+    alias ansible='docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/code -w /code abdennour/ansible:2.9.6 ansible'
+     
+    alias ansible-playbook='docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/code -w /code abdennour/ansible:2.9.6 ansible-playbook'
+     
+    alias ansible-inventory='docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/code -w /code  abdennour/ansible:2.9.6 ansible-inventory'
+     
+    alias ansible-galaxy='docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/code -w /code abdennour/ansible:2.9.6 ansible-galaxy'
+     
+    alias ansible-doc='docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/code -w /code abdennour/ansible:2.9.6 ansible-doc'
+    ===============================================================================================================================================
+
+    Summary
+Checklist for setting up a passwordless remote user
+
+
+1. [control-machine] Make sure to generate a key pair ( ./key is the private and ./key.pub is the public) by running ssh-keygen -f key
+
+2. [control-machine] Make sure that the private key has the permission 400  ( chmod 400 key ).
+
+3. [target-host] Create a user (.e.g: called ansibleuser ) on the target host ( e.g: adduser ansibleuser , or , useradd -m -d /home/ansibleuser -s /bin/bash ansibleuser )
+
+4. [target-host] Check what's the home directory of the ansibleuser. Make sure he has a home directory
+
+    getent passwd "ansibleuser" | cut -d: -f6
+
+5. [target-host] Make sure that the login shell of the ansibleuser is NOT usr/sbin/nologin or /bin/false . Instead, it should be /bin/bash or /bin/sh ,... so on : 
+
+    getent passwd "ansibleuser" | cut -d: -f7
+
+6. [target-host] Make sure to place the CONTENT of the  public key (key.pub) under the home directory of the remote user and specially as content of the file  ${HOME}/.ssh/authorized_keys .
+
+7. [target-host] .ssh/ directory and .ssh/authorized_keys must have the following permissions:
+
+    chmod 700 ${HOME}/.ssh
+    chmod 600 ${HOME}/.ssh/authorized_keys
+
+8. [target-host] Make sure SSHD is running systemctl status sshd .
+
+9. [target-host] Make sure that SSHD allows PublicKeyAuthentication by checking its config file: 
+
+    grep PubkeyAuthentication /etc/ssh/sshd_config
+    # must return: 'PubkeyAuthentication yes'
+
+if it  is not the case, you need to update the configuration file /etc/ssh/sshd_config then restart SSH again systemctl restart sshd .
+
+10. [control-machine] Make sure there is no firewall block the SSH communication
+
+netcat -zv <ip.of.target.host> 22
+
+
+11. [control-machine] Now let's try to connect : ssh -i key ansibleuser@<ip.of.target.host>
+
+________
+
+NOTES:
+
+- If it does not work after following all these steps, keep running  ssh -i key ansibleuser@<ip.of.target.host> -vvvv  , checking the stdout (output of command) until making it work.
+
+- The ansible role abdennour.bootstrap has been designed to cover all these steps automatically. If you are familiar with Ansible role, you can use it. If not, we will cover Ansible Roles in the subsequent lecture & you  will be able to automate everything even bootstrapping your servers with a passwordless remote user.
+
+ansible-doc --list   - It will give list of all ansible modules.
+
+- To list variables of any host: ansible-inventory -host dev1
+
+=========================================================================================
+Conditional Examples for "when" statement
+
+- [EQUAL - String] Run task only if the distribution is Ubuntu
+
+when: ansible_distribution == 'Ubuntu'
+
+
+- [EQUAL - Number ] Run task only if the integer variable  "app_replicas" equals 12
+
+when: app_replicas == 12
+
+
+- [LESS THAN ] Run task only if the integer variable  "app_replicas" less than 12
+
+when: app_replicas < 12
+
+
+- [GREATER THAN ] Run task only if the integer variable  "app_replicas" greater than 12
+
+when: app_replicas > 12
+
+
+-  [NOT Equal] Run task only if the distribution is NOT Centos
+
+when: ansible_distribution != 'Centos'
+
+
+- [VAR EXISTS] Run task only if the variable "git_branch" exists
+
+when: git_branch is defined
+
+
+- [VAR NOT EXISTS] Run task only if the variable "git_branch" does NOT exist
+
+when: git_branch is not defined
+
+
+- [BELONG TO] Run task only if a string (git_branch variable) is an element in an array
+
+when:  ( git_branch in ["master", "development"] )
+
+
+- [AND Operator] Run task only if 2 conditions are true :
+
+when: ( app_replicas == 12 ) and ( ansible_distribution == 'Ubuntu')
+
+Alternatively, put conditions in array (list) is the same as "and" operator
+
+    when:
+    - app_replicas == 12
+    - ansible_distribution == 'Ubuntu'
+
+
+- [OR Operator] Run task only if one of 2 conditions is true :
+
+when: ( app_replicas == 12 ) or ( ansible_distribution == 'Ubuntu' ) 
+
+============================================================================================================
+
+Filters - Useful Links
+
+Filters highlighted by Ansible : 
+
+https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html
+
+List of Jinja2 Filters :
+
+https://jinja.palletsprojects.com/en/2.11.x/templates/#builtin-filters
+
+
+Common used Filters : 
+
+- {‌{ my_var | default("myval") }} : assign default value "myval" to the variable "my_var" if it not defined.
+
+- {‌{ user_password | password_hash('sha512') }} : transform the variable value to a sha512 password hash . Useful when using "user" module to create/update users with their passwords.
+
+- The following filters change the format of the variable data structure to json or yaml or even to a pretty json or yaml :
+
+    {‌{ some_variable | to_json }}
+    {‌{ some_variable | to_yaml }}
+    {‌{ some_variable | to_nice_json }}
+    {‌{ some_variable | to_nice_yaml }}
+
+
+================================================================================================================
+Summary- Jinja2 Templating Syntax
+
+This is a summary of the main Jinja2 Blocks syntax that can be used with Ansible playbook for daily basis operations and maintenance:
+
+
+Print variable or Expression
+
+Print the variable by using the variable name surrounded by double braces.
+
+    {‌{ my_var }}
+    # .i.e: {‌{ ansible_distribution }}
+
+
+Filters
+
+Variables can be transformed/modified by filters.
+
+Think about filter as a function
+
+    {‌{ my_var | my_filter }}
+    # .i.e : {‌{ app_title | capitalize }}
+
+Read it like my_filter(my_var)
+
+
+If Block
+
+    {% if CONDITION1 %}
+        blah blah blah
+    {% elif CONDITION2 %}
+        blahelif blahelif blahelif .
+    {% else %}
+        blahelse so far
+    {% endif %}
+     
+    #.i.e
+     
+    {% if git_branch == 'master' %}
+         RELEASE: {‌{ app_version }}
+    {% else %}
+        SNAPSHOT: {‌{ app_version }}-RC{‌{ build_number }} 
+    {% endif %}
+
+
+For Loop
+
+    {% for ELEMENT in ARRAY %}
+       Process {‌{ ELEMENT }}
+    {% endfor %}
+     
+    #. i.e: assume that ( app_pages = ["login.html", "index.html"] )
+     
+    {% for page in app_pages %}
+       <a href="https://example.com/{‌{ page }}">{‌{ page }}</a>
+    {% endfor %}
+
+
+================================================================================
+Ansible Vault:
+
+1. Create a new encrypted file:
+ansible-vault create vars/users.yaml
+
+2. Encrypt existing clear text file:
+ansible-vault encrypt vars/users.yaml
+
+3. Decrypt existing clear text file:
+ansible-vault decrypt vars/users.yaml
+
+4. Edit encrypted file:
+ansible-vault edit vars/users.yaml
+
+5. See contents of encrypted file:
+ansible-vault view vars/users.yaml
+
+==========================================================================================
+Ansible Galaxy:
+
+1. Install a new role:
+ansible-galaxy install webserver
+
+2. Install a new role from requirements file:
+ansible-galaxy install -r ./requirements.yaml
+
+3. Create a new role with skelton directory:
+ansible-galaxy init my_role
+
+4. help
+ansible-galaxy --help

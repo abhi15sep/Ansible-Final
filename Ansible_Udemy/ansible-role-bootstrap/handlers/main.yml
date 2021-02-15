@@ -1,0 +1,6 @@
+---
+# handlers file for abdennour.bootstrap
+- name: SSHD is restarted
+  service:
+    name: sshd
+    state: restarted

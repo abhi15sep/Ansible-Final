@@ -1,0 +1,6 @@
+---
+- name: bootstrap backup - debug
+  debug:
+      msg: |
+        Private Key of {{ bootstrap_username }} is on your current machine
+        under {{ bootstrap_keyair_path }}

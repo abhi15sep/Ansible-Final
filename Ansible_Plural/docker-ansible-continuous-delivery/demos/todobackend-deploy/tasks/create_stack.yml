@@ -1,0 +1,22 @@
+---
+- name: create/update stack
+  cloudformation:
+    stack_name: todobackend
+    state: present
+    template: templates/stack.yml
+    template_format: yaml
+    template_parameters:
+      VpcId: "{{ vpc_id }}"
+      SubnetId: "{{ subnet_id }}"
+      DbSubnets: "{{ db_subnets | join(',') }}"
+      KeyPair: "{{ ec2_keypair }}"
+      DbUsername: "{{ db_username }}"
+      DbPassword: "{{ db_password }}"
+      DbAvailabilityZone: "{{ db_availability_zone }}"
+      InstanceCount: "{{ instance_count | default(1) }}"
+    tags:
+      Environment: test
+  register: cf_stack
+
+- debug: msg={{ cf_stack }}
+  when: debug is defined

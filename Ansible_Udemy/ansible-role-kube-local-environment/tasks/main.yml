@@ -1,0 +1,6 @@
+---
+# tasks file for kube-local-environment
+# TODO to be refactored to be multi-platform
+- name: kube-local software are installed
+  debug:
+    msg: kube-local software are installed

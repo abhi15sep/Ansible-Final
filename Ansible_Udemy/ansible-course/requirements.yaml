@@ -1,0 +1,17 @@
+# - src: 
+#   name: 
+#   version: 
+roles:
+- src: geerlingguy.java
+  name: geerlingguy.java
+ 
+- src: geerlingguy.jenkins
+  name: geerlingguy.jenkins
+
+- src: geerlingguy.docker
+  name: geerlingguy.docker
+- src: geerlingguy.kubernetes
+  name: geerlingguy.kubernetes
+
+collections:
+- newswangerd.collection_demo

@@ -1,0 +1,79 @@
+# ansible_facts of db is defined
+- name: play just to load all hostvars
+  hosts: all
+  tasks: []
+- name: play backend - prebuild
+  hosts: app
+  tags:
+  - be-pre-build
+  tasks:
+  - name: go is installed
+    import_role:
+      name: abdennour.golang
+    vars:
+      golang_version: "1.14"
+      golang_packages:
+      - github.com/gorilla/mux
+      - go.mongodb.org/mongo-driver/mongo
+      golang_users:
+      - "{{ ansible_ssh_user }}"
+    become: yes
+  
+- name: play backend - build
+  hosts: app
+  become: yes
+  vars:
+    be_build_workspace: /opt/build_dir
+    be_repo_url: https://github.com/kubernetes-tn/go-to-do-app.git
+    be_repo_name: go-to-do-app
+  tags:
+  - be-build
+  tasks:
+  - name: workspace build exists
+    file:
+      path: "{{ be_build_workspace }}"
+      state: directory
+  - name: git checkout
+    git:
+      repo: "{{ be_repo_url }}"
+      dest: "{{ be_build_workspace }}/{{ be_repo_name }}"
+  - name: go build
+    shell: . /etc/profile;go build -o {{ be_tmp_bin }}
+    args:
+      chdir: "{{ be_build_workspace }}/{{ be_repo_name }}/server"
+
+- name: play backend - deploy
+  hosts: app
+  become: yes
+  tags:
+  - be-deploy
+  tasks:
+    # 1 - Create Systemd Service Todo which populates (2) & manages (3)
+    #       -> notify: `systemctl reload-daemon`
+  - name: systemd service todo is generated
+    template:
+      src: todo.service.j2
+      dest: /lib/systemd/system/todo.service
+    notify: systemd reloaded
+    # 2 - Put env vars in seperated file ( `/etc/todo.env`)
+  - name: todo env file is generated
+    include_tasks: tasks/backend_env_file.yaml
+
+    # 3 - Move buid file from `/tmp/todo` to a standard place (`/usr/local/bin/todo`)
+    #       -> notify: `systemctl restart todo`
+  - name: backend is deployed
+    copy:
+      src: "{{ be_tmp_bin }}"
+      dest: "{{ be_prod_bin }}"
+      mode: a+x
+      remote_src: yes
+    notify: backend restarted
+  handlers:
+  - name: systemd reloaded
+    systemd:
+      daemon_reload: yes
+  - name: backend restarted
+    service:
+      name: todo
+      state: restarted
+    

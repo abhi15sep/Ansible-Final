@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Todobackend Stack"
+
+# Stack Parameters
+Parameters:
+  VpcId: 
+    Type: "AWS::EC2::VPC::Id"
+    Description: "The target VPC Id"
+  SubnetId:
+    Type: "AWS::EC2::Subnet::Id"
+    Description: "The target Subnet Id in Availability Zone a"
+  KeyPair:
+    Type: "String"
+    Description: "The key pair that is allowed SSH access"
+  InstanceCount:
+    Type: "Number"
+    Description: "The desired number of application instances"
+  DbSubnets:
+    Type: "List<AWS::EC2::Subnet::Id>"
+    Description: "The target DB Subnet Group subnet Ids"
+  DbAvailabilityZone:
+    Type: "String"
+    Description: "The target availability zone for the database instance"
+  DbUsername:
+    Type: "String"
+    Description: "The RDS database username"
+  DbPassword:
+    Type: "String"
+    Description: "The RDS database password"
+    NoEcho: "true"
+
+# Stack Resources
+Resources:
+  AutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      VPCZoneIdentifier: [ { "Ref": "SubnetId" } ]
+      LaunchConfigurationName: { "Ref": "AutoScalingLaunchConfiguration" }
+      MinSize: 0
+      MaxSize: 2
+      DesiredCapacity: { "Ref": "InstanceCount" }
+      Tags:
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-instance" ] ] }
+          PropagateAtLaunch: "true"
+  AutoScalingLaunchConfiguration:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      ImageId: ami-cf6342ac
+      InstanceType: t2.micro
+      KeyName: { "Ref": "KeyPair" }
+      IamInstanceProfile: { "Ref": "EC2InstanceProfile" }
+      SecurityGroups:
+        - { "Ref": "EC2InstanceSecurityGroup" }
+      UserData: {
+        "Fn::Base64": { "Fn::Join": ["", [
+          "#!/bin/bash\n",
+          "echo ECS_CLUSTER=", { "Ref" : "EcsCluster" }, " >> /etc/ecs/ecs.config\n"
+        ] ] }
+      }
+  EC2InstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupDescription: "todobackend-sg"
+      VpcId: { "Ref": "VpcId" }
+      SecurityGroupIngress: 
+        - IpProtocol: "tcp"
+          FromPort: "8000"
+          ToPort: "8000"
+          SourceSecurityGroupId: { "Ref": "ElbSecurityGroup" }
+        - IpProtocol: "tcp"
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: "0.0.0.0/0"
+      Tags: 
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-instance-sg" ] ] }
+  EC2InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: [ { "Ref": "EC2InstanceRole" } ]
+  EC2InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": { "Service": [ "ec2.amazonaws.com" ] },
+            "Action": [ "sts:AssumeRole" ]
+          }
+        ]
+      }
+      Path: "/"
+      ManagedPolicyArns: 
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"     
+  DbInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBSubnetGroupName: { "Ref": "DbSubnetGroup" }
+      MultiAZ: "false"
+      AvailabilityZone: { "Ref": "DbAvailabilityZone" }
+      AllocatedStorage: 8
+      StorageType: "gp2"
+      DBInstanceClass: "db.t2.micro"
+      DBName: "todobackend"
+      Engine: "MySQL"
+      EngineVersion: "5.6"
+      MasterUsername: { "Ref": "DbUsername" }
+      MasterUserPassword: { "Ref": "DbPassword" }
+      VPCSecurityGroups:
+        - { "Ref": "DbSecurityGroup" }
+      Tags:
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-db" ] ] }
+  DbSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      GroupDescription: "Todobackend DB Security Group"
+      VpcId: { "Ref": "VpcId"}
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "3306"
+          ToPort: "3306"
+          SourceSecurityGroupId: { "Ref": "EC2InstanceSecurityGroup" }        
+  DbSubnetGroup: 
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "Todobackend DB Subnet Group"
+      SubnetIds: { "Ref": "DbSubnets" }
+      Tags: 
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-db-subnet-group" ] ] }
+  ElasticLoadBalancer:
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      CrossZone: "false"
+      SecurityGroups: [ { "Ref": "ElbSecurityGroup" } ]
+      Listeners:
+        - LoadBalancerPort: "80"
+          InstancePort: "8000"
+          Protocol: "http"
+      HealthCheck: 
+        Target: "HTTP:8000/todos"
+        HealthyThreshold: "2"
+        UnhealthyThreshold: "10"
+        Interval: "30"
+        Timeout: "5"
+      Subnets: [ { "Ref": "SubnetId" } ]
+      Tags: 
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-elb" ] ] }
+  ElbSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Todobackend ELB Security Group"
+      VpcId: { "Ref": "VpcId" }
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: "0.0.0.0/0"
+      Tags: 
+        - Key: "Name"
+          Value: { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-elb-sg" ] ] }
+  EcsCluster:
+    Type: "AWS::ECS::Cluster"
+  TodobackendTaskDefinition: 
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Name: todobackend
+          Image: jmenga/todobackend
+          Memory: 450
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: todobackend.settings.release
+            - Name: MYSQL_HOST
+              Value: { "Fn::GetAtt": ["DbInstance", "Endpoint.Address"] }
+            - Name: MYSQL_USER
+              Value: { "Ref": "DbUsername" }
+            - Name: MYSQL_PASSWORD
+              Value: { "Ref": "DbPassword" }
+          MountPoints:
+            - ContainerPath: /var/www/todobackend
+              SourceVolume: webroot
+          Command:
+            - uwsgi
+            - "--socket /var/www/todobackend/todobackend.sock"
+            - "--chmod-socket=666"
+            - "--module todobackend.wsgi"
+            - "--master"
+            - "--die-on-term"
+        - Name: nginx
+          Image: jmenga/todobackend-nginx
+          Memory: 300
+          PortMappings:
+            - ContainerPort: "8000"
+              HostPort: "8000"
+          MountPoints:
+            - ContainerPath: /var/www/todobackend
+              SourceVolume: webroot
+      Volumes: 
+        - Name: webroot
+          Host: 
+            SourcePath: /ecs/webroot
+  TodobackendAdhocTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Name: todobackend
+          Image: jmenga/todobackend
+          Memory: 245
+          Environment:
+            - Name: DJANGO_SETTINGS_MODULE
+              Value: todobackend.settings.release
+            - Name: MYSQL_HOST
+              Value: { "Fn::GetAtt": ["DbInstance", "Endpoint.Address"] }
+            - Name: MYSQL_USER
+              Value: { "Ref": "DbUsername" }
+            - Name: MYSQL_PASSWORD
+              Value: { "Ref": "DbPassword" }
+          MountPoints:
+            - ContainerPath: /var/www/todobackend
+              SourceVolume: webroot
+      Volumes:
+        - Name: webroot
+          Host: 
+            SourcePath: /ecs/webroot
+  TodobackendService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      TaskDefinition: { "Ref": "TodobackendTaskDefinition" }
+      Cluster: { "Ref": "EcsCluster" }
+      LoadBalancers:
+        - ContainerName: "nginx"
+          ContainerPort: "8000"
+          LoadBalancerName: { "Ref": "ElasticLoadBalancer" }
+      Role: { "Ref": "EcsServiceRole" }
+      DesiredCount: 0
+  EcsServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "ecs.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          }
+        ]
+      }
+      Path: "/"
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole
+
+# Stack Outputs
+Outputs:
+  ElbDomainName: 
+    Description: "Public DNS name of Elastic Load Balancer"
+    Value: { "Fn::GetAtt": [ "ElasticLoadBalancer", "DNSName" ] }
+  EcsCluster:
+    Description: "Amazon Resource Name (ARN) of Todobackend Ecs Cluster"
+    Value: { "Ref": "EcsCluster" }
+  TodobackendTaskDefinition:
+    Description: "Amazon Resource Name (ARN) of Todobackend Task Definition"
+    Value: { "Ref": "TodobackendTaskDefinition" }
+  TodobackendAdhocTaskDefinition:
+    Description: "Amazon Resource Name (ARN) of Todobackend Adhoc Task Definition"
+    Value: { "Ref": "TodobackendAdhocTaskDefinition" }
+  TodobackendService: 
+    Description: "Amazon Resource Name (ARN) of Todobackend Service"
+    Value: { "Ref": "TodobackendService" }

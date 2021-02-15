@@ -1,0 +1,187 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Jenkins Stack",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "The target VPC Id"
+    },
+    "SubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "The target Subnet Id"
+    },
+    "KeyName": {
+      "Type": "String",
+      "Description": "The key pair that is allowed SSH access"
+    }
+  }, 
+  "Resources": {
+    "EC2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": "ami-75a38416",
+        "InstanceType": "t2.micro",
+        "SubnetId": { "Ref": "SubnetId" },
+        "KeyName": { "Ref": "KeyName" },
+        "SecurityGroupIds": [ { "Ref": "EC2InstanceSecurityGroup" } ],
+        "IamInstanceProfile": { "Ref": "EC2InstanceProfile" },
+        "UserData" : { 
+          "Fn::Base64" : { "Fn::Join" : ["", [
+            "#!/bin/bash\n",
+            "echo ECS_CLUSTER=", { "Ref" : "EcsCluster" }, " >> /etc/ecs/ecs.config\n",
+            "groupadd -g 1000 jenkins\n",
+            "useradd -u 1000 -g jenkins jenkins\n",
+            "mkdir -p /ecs/jenkins_home\n",
+            "chown -R jenkins:jenkins /ecs/jenkins_home\n"
+          ] ] } 
+        },
+        "Tags": [ { "Key": "Name", "Value": { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-instance" ] ] } } ]
+      }
+    },
+    "EC2InstanceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Jenkins Ingress Access",
+        "VpcId": { "Ref": "VpcId" },
+        "SecurityGroupIngress": [
+          { 
+            "IpProtocol" : "tcp", 
+            "FromPort" : "8080", 
+            "ToPort" : "8080",
+            "SourceSecurityGroupId" : { "Ref" : "ElbSecurityGroup" } 
+          },
+          { 
+            "IpProtocol" : "tcp", 
+            "FromPort" : "22", 
+            "ToPort" : "22",
+            "CidrIp" : "0.0.0.0/0"
+          }
+        ],
+        "Tags": [ { "Key": "Name", "Value": { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-instance-sg" ] ] } } ]
+      }
+    },
+    "EC2InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [ { "Ref": "EC2InstanceRole" } ]
+      }
+    },
+    "EC2InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": [ "ec2.amazonaws.com" ] },
+              "Action": [ "sts:AssumeRole" ]
+            }
+          ]
+        },
+        "Path": "/",
+        "ManagedPolicyArns": [ 
+          "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role",
+          "arn:aws:iam::aws:policy/AdministratorAccess"
+        ]
+      }
+    },
+    "ElbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Jenkins ELB Ingress Access",
+        "VpcId": { "Ref": "VpcId" },
+        "SecurityGroupIngress": [
+          { 
+            "IpProtocol" : "tcp", 
+            "FromPort" : "80", 
+            "ToPort" : "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [ { "Key": "Name", "Value": { "Fn::Join": ["", [ { "Ref": "AWS::StackName" }, "-elb-sg" ] ] } } ]
+      }
+    },
+    "ElasticLoadBalancer": {
+      "Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "CrossZone": "false",
+        "SecurityGroups" : [ { "Ref": "ElbSecurityGroup" } ],
+        "Listeners" : [ 
+          {
+            "LoadBalancerPort" : "80",
+            "InstancePort" : "8080",
+            "Protocol" : "http"
+          }
+        ],
+        "Instances": [ { "Ref": "EC2Instance" } ],
+        "Subnets" : [ { "Ref": "SubnetId" } ]
+      }
+    },
+    "EcsCluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+    "EcsTaskDefinition": {
+      "Type" : "AWS::ECS::TaskDefinition",
+      "Properties" : {
+        "ContainerDefinitions" : [ 
+          {
+            "Name": "jenkins",
+            "Image": "jmenga/jenkins:ecs",
+            "Memory": 995,
+            "PortMappings": [ { "ContainerPort": 8080, "HostPort": 8080 } ],
+            "MountPoints": [
+              {
+                "ContainerPath": "/var/jenkins_home",
+                "SourceVolume": "jenkins_home"
+              },
+              {
+                "ContainerPath": "/var/run/docker.sock",
+                "SourceVolume": "docker"
+              }
+            ]
+          }
+        ],
+        "Volumes" : [ 
+          { 
+            "Name": "jenkins_home",
+            "Host": { "SourcePath": "/ecs/jenkins_home" }
+          },
+          {
+            "Name": "docker",
+            "Host": { "SourcePath": "/var/run/docker.sock" }
+          }
+        ]
+      }
+    },
+    "EcsService": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": { "Ref": "EcsCluster" },
+        "DesiredCount": 1,
+        "TaskDefinition": { "Ref": "EcsTaskDefinition" }
+      }
+    }
+  },
+  "Outputs": {
+    "ElbDomainName": {
+      "Description": "Public DNS name of Elastic Load Balancer",
+      "Value": {
+        "Fn::GetAtt": [
+          "ElasticLoadBalancer",
+          "DNSName"
+        ]
+      }
+    },
+    "EC2InstanceDomainName": {
+      "Description": "Public DNS name of EC2 Instance",
+      "Value": {
+        "Fn::GetAtt": [
+          "EC2Instance",
+          "PublicDnsName"
+        ]
+      }
+    }
+  }
+}

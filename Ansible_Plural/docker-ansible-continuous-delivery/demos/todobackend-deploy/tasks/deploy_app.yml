@@ -1,0 +1,95 @@
+---
+- name: set task definition facts
+  set_fact:
+    todobackend_task_def_arn: 
+      "{{ cf_stack.stack_outputs.TodobackendTaskDefinition | regex_replace('^(.*):[\\d]*$','\\1') }}"
+    todobackend_adhoc_task_def_arn: 
+      "{{ cf_stack.stack_outputs.TodobackendAdhocTaskDefinition | regex_replace('^(.*):[\\d]*$','\\1') }}"
+
+- name: update task definitions
+  aws_ecs_taskdefinition:
+    state: update
+    arn: "{{ item }}"
+    containers:
+      - name: todobackend
+        image: "{{ image_tag }}"
+  with_items:
+    - "{{ todobackend_task_def_arn }}"
+    - "{{ todobackend_adhoc_task_def_arn }}"
+  when: image_tag is defined
+
+- name: run migrations
+  aws_ecs_task:
+    operation: run
+    cluster: "{{ cf_stack.stack_outputs.EcsCluster }}"
+    task_definition: "{{ todobackend_adhoc_task_def_arn }}"
+    count: 1
+    overrides: 
+      containerOverrides:
+        - name: todobackend
+          command:
+          - "manage.py"
+          - "migrate"
+          - "--noinput"
+  register: migration_task
+  when:  ('migrate' in ecs_tasks | default([]))
+
+- block:
+  - debug: msg={{ migration_task }}
+    when: debug is defined
+  - name: "fail if migration task failed"
+    fail: msg="One or more migration tasks exited with non-zero exit code"
+    with_items: "{{ migration_task.task | default([]) }}"
+    when: item.containers[0].exitCode != 0
+  when: migration_task is defined
+
+- name: run collectstatic
+  aws_ecs_task:
+    operation: run
+    cluster: "{{ cf_stack.stack_outputs.EcsCluster }}"
+    task_definition: "{{ todobackend_adhoc_task_def_arn }}"
+    count: "{{ instance_count | default(1) }}"
+    overrides: 
+      containerOverrides:
+        - name: todobackend
+          command:
+          - "manage.py"
+          - "collectstatic"
+          - "--noinput"
+  register: collectstatic_task
+  when:  ('collectstatic' in ecs_tasks | default([]))
+
+- block:
+  - debug: msg={{ collectstatic_task }}
+    when: debug is defined
+  - name: "fail if collectstatic task failed"
+    fail: msg="One or more collectstatic tasks exited with non-zero exit code"
+    with_items: "{{ collectstatic_task.task | default([]) }}"
+    when: item.containers[0].exitCode != 0
+  when: collectstatic_task is defined
+
+- name: reconfigure service
+  aws_ecs_service:
+    state: update
+    name: "{{ cf_stack.stack_outputs.TodobackendService }}"
+    cluster: "{{ cf_stack.stack_outputs.EcsCluster }}"
+    task_definition: "{{ todobackend_task_def_arn }}" 
+    desired_count: "{{ instance_count | default(1) }}"
+    deployment_config: 
+      minimumHealthyPercent: 50
+      maximumPercent: 200
+  register: configure_ecs_service
+  when: stack_config is defined
+- debug: msg={{ configure_ecs_service }}
+  when: configure_ecs_service is defined and debug is defined
+  
+- name: deploy service update
+  aws_ecs_service:
+    state: update
+    name: "{{ cf_stack.stack_outputs.TodobackendService }}"
+    cluster: "{{ cf_stack.stack_outputs.EcsCluster }}"
+    task_definition: "{{ todobackend_task_def_arn }}" 
+  register: update_ecs_service
+  when: image_tag is defined
+- debug: msg={{ update_ecs_service }}
+  when: update_ecs_service is defined and debug is defined

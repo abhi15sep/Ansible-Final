@@ -1,0 +1,5 @@
+---
+- src: andrewrothstein.kubectl
+- src: andrewrothstein.kubernetes-helm
+- src: abdennour.helmfile
+- src: samcre.aws_iam_authenticator

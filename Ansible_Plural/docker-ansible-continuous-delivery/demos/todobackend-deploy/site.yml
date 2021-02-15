@@ -1,0 +1,12 @@
+---
+- name: Todobackend Deployment Playbook
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars_files:
+    - secrets.yml
+  environment:
+    AWS_DEFAULT_REGION: "{{ lookup('env', 'AWS_DEFAULT_REGION') | default('ap-southeast-2', true) }}"
+  tasks:
+    - include: tasks/create_stack.yml
+    - include: tasks/deploy_app.yml

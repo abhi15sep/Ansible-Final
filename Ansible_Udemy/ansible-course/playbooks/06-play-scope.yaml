@@ -1,0 +1,9 @@
+- hosts: ec2
+  become: yes
+  vars_files:
+  - vars/06-vars.yaml
+
+  tasks:
+  - name: debug
+    debug:
+      msg: "the value of webserver is {{ webserver }}"

@@ -1,0 +1,7 @@
+---
+bootstrap_username: ansible
+bootstrap_keyair_path: /tmp/{{ bootstrap_username }}_id_rsa
+bootstrap_keyair_type: rsa
+bootstrap_keyair_size: 4096
+bootstrap_backup:
+  type: debug # vault (TODO), jenkins-credentials (TODO)
